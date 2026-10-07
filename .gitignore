@@ -52,6 +52,10 @@ sandbox/*.png
 sandbox/*.pdf
 sandbox/*.csv
 
+# --- Local working directory ------------------------------------------------
+# Scratch material kept beside the package but never published.
+local/
+
 # --- OS cruft --------------------------------------------------------------
 .DS_Store
 Thumbs.db
