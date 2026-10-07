@@ -1,0 +1,511 @@
+---
+title: "Getting started with bayesrep"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+vignette: >
+  %\VignetteIndexEntry{Getting started with bayesrep}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>",
+    fig.width = 7,
+    fig.height = 4.5,
+    fig.align = "center"
+)
+options(width = 90)
+library(bayesrep)
+```
+
+## 1. What this package is for
+
+You have many predictors, possibly more than observations, and many of them are
+correlated with each other.
+
+A standard sparse model (lasso, spike-and-slab) handles this by **picking one
+predictor out of each correlated group and throwing the rest away**. The choice
+is close to arbitrary: resample your data and you often get a different winner.
+Coefficients are unstable and uncertainty is understated.
+
+`bayesrep` fits an **ensemble of `G` sparse sub-models at once**. Two things
+act together:
+
+* every sub-model has to predict the response **on its own**, so each needs a
+  competent set of predictors;
+* a **repulsive prior** penalises a sub-model for reaching for a predictor
+  another sub-model already holds.
+
+On a correlated block the result is that the block gets *split across*
+sub-models, each reconstructing the signal through its own member. Predictions
+average the sub-models. You get full Bayesian uncertainty, and an explicit,
+inspectable account of which predictors are acting as substitutes for one
+another.
+
+## 2. A worked example
+
+Eight predictors. `V1` and `V2` are nearly identical (correlation above 0.98)
+and both genuinely matter. `V3` matters and is on its own. The rest are noise.
+
+```{r data}
+set.seed(42)
+n <- 120
+p <- 8
+
+X <- matrix(rnorm(n * p), n, p)
+X[, 2] <- X[, 1] + rnorm(n, sd = 0.15)      # V2 is almost a copy of V1
+colnames(X) <- paste0("V", 1:p)
+
+# truth: intercept 10, V1 = 2, V2 = 2, V3 = -3, V4..V8 = 0
+y <- as.numeric(10 + X %*% c(2, 2, -3, rep(0, 5)) + rnorm(n))
+
+round(cor(X[, 1], X[, 2]), 3)
+```
+
+Fitting is one call.
+
+```{r fit}
+fit <- bre(X, y, numModels = 3, iter = 3000, burnin = 1500,
+           verbose = FALSE, seed = 7)
+```
+
+The two settings worth thinking about are `numModels` (how many sub-models) and
+`lambda2` (how hard they repel). The default `lambda2` is deliberately
+conservative and on this small example it is **too weak to separate anything** —
+every feature ends up in every sub-model:
+
+```{r default-weak}
+rowSums(fit$pip)[1:3]        # average number of sub-models carrying V1, V2, V3
+```
+
+Sections 3 to 5 use this fit to show the mechanics, which are unaffected.
+Section 6 then chooses `lambda2` properly, and Section 7 uses that fit to look
+at structure. **Do not skip Section 6 when you apply this to your own data.**
+
+## 3. The three things to look at
+
+In order: **did it run properly**, **what did it find**, **should I believe it**.
+
+### `print(fit)` — did it run properly?
+
+```{r print}
+fit
+```
+
+What to check:
+
+| Line | What you want |
+|---|---|
+| `Transfer acc.` | comfortably above zero. This is the move that lets features change sub-model; if it is 0% the assignment is frozen. |
+| `theta MH acc.` | high is fine and expected. |
+| `Sub-model size` | not all zeros (nothing found) and not everything (no sparsity). |
+| `Selected (FDR 10%)` | a plausible number of real signals. |
+
+### `summary(fit)` — what did it find?
+
+This is the main output of the package.
+
+```{r summary}
+summary(fit)
+```
+
+Column by column:
+
+* **`eMIP`** — "ensemble marginal inclusion probability": the posterior
+  probability that the feature is used by **at least one** sub-model. This is
+  your variable-importance score, and a correct per-feature probability.
+  Use it to **rank**, not to threshold -- see the warning below.
+* **`PostMean`, `Lower`, `Upper`** — the ensemble coefficient and its 95%
+  credible interval, **in your original units**. No back-transforming needed.
+* **`Theta`** — how broadly useful the feature is, on a 0–1 scale.
+* **`MeanNModels`** — the average number of sub-models carrying the feature.
+  Near 1 means it lives in a single sub-model; near `G` means every sub-model
+  wants it (a "super-predictor" the repulsion could not push apart).
+
+Notice `V1` and `V2`. Both have high `eMIP`, so the model is certain they
+matter, but their individual intervals are wide because the data genuinely
+cannot separate them. A single sparse model would typically have kept one and
+zeroed the other, hiding that ambiguity. Only their **sum** is well identified:
+
+```{r summary-pair}
+cf <- coef(fit)
+cat("V1 + V2 estimated:", round(sum(cf[c("V1", "V2")]), 3), " true: 4\n")
+cat("V3 estimated:", round(cf[["V3"]], 3), " true: -3\n")
+```
+
+### Selecting features: do not threshold eMIP
+
+It is tempting to call everything with `eMIP > 0.5` a discovery. **Don't.**
+eMIP is the probability that a feature is carried by *at least one* of the `G`
+sub-models, so a null feature gets `G` chances to be picked up. A feature whose
+per-sub-model inclusion probability is only 0.12 has
+`1 - (1 - 0.12)^5 = 0.47` at `G = 5` — it crosses 0.5 on arithmetic alone. In a
+simulation with 350 null predictors, `eMIP > 0.5` admitted **347 of them**.
+
+Thresholding the per-sub-model probabilities instead does not help: the
+posterior is invariant to permuting sub-model labels, so a feature reliably
+carried by exactly one of five sub-models sits near `1/5` in each and never
+reaches 0.5 anywhere.
+
+Use `selectFeatures()`, which ranks by eMIP and admits features while the
+estimated false discovery rate — the average of `1 - eMIP` over those selected
+— stays within your target. That quantity never refers to `G`:
+
+```{r select}
+selectFeatures(fit, fdr = 0.1)
+```
+
+```{r select-attrs}
+sel <- selectFeatures(fit, fdr = 0.1)
+cat("target FDR:", attr(sel, "targetFdr"),
+    " estimated:", round(attr(sel, "estimatedFdr"), 4), "\n")
+```
+
+The full ranking is an ordinary data frame, so you can still inspect it
+directly:
+
+```{r summary-subset}
+s <- summary(fit)
+head(s[, c("Feature", "eMIP", "PostMean", "MeanNModels")], 5)
+```
+
+### `plot(fit, type = "trace")` — should I believe it?
+
+```{r trace, fig.height = 6}
+plot(fit, type = "trace")
+```
+
+You want all three panels to look like **fuzzy horizontal bands**. A visible
+trend, or long flat stretches, means the chain has not settled: raise `iter` and
+`burnin`.
+
+## 4. Getting numbers out
+
+### `coef()`
+
+Original data scale by default, intercept included.
+
+```{r coef}
+round(coef(fit), 3)
+```
+
+### `predict()`
+
+Predictions average over the posterior rather than plugging in one coefficient
+vector. There are three levels of detail.
+
+```{r predict}
+newX <- X[1:4, ]
+
+predict(fit, newX)                                    # point predictions
+```
+
+```{r predict-ci}
+round(predict(fit, newX, interval = "credible"), 2)   # uncertainty in the mean
+```
+
+```{r predict-pi}
+round(predict(fit, newX, interval = "prediction"), 2) # uncertainty in a new observation
+```
+
+Which one you want:
+
+* **`"credible"`** — "where is the average response for this x?" Narrow.
+* **`"prediction"`** — "where will the *next actual observation* at this x
+  fall?" Wider, because it includes the irreducible noise.
+
+If you are telling someone what to expect for one new case, you want
+`"prediction"`.
+
+## 5. The plots
+
+### `type = "emip"` — which features are in?
+
+```{r plot-emip}
+plot(fit, type = "emip", top = 8)
+```
+
+### `type = "intervals"` — how big, and how certain?
+
+```{r plot-intervals}
+plot(fit, type = "intervals", top = 8)
+```
+
+Bars that cross the red zero line are unresolved. `V1` and `V2` are both clearly
+non-zero but individually imprecise — the collinearity, shown honestly.
+
+The two remaining types, `"coallocation"` and `"allocation"`, describe the
+ensemble structure and appear in Section 7, where there is a properly tuned fit
+to apply them to.
+
+## 6. Choosing `lambda2` and `numModels`
+
+Use `cv.bre()`, which scores held-out predictive error of the ensemble over a
+grid and refits at the winner.
+
+```{r cv}
+cv <- cv.bre(X, y, lambda2 = c(0, 2, 5, 10, 20), numModels = 3, nfolds = 5,
+             iter = 1200, burnin = 600, verbose = FALSE, seed = 3)
+cv
+```
+
+Note the grid reaches much further than the default of 2. `lambda2` competes on
+the log-odds scale against the evidence for including a feature, which grows
+with sample size and signal strength, so the value that separates a correlated
+group on one dataset can be an order of magnitude off on another. **Always
+widen the grid until the chosen value is interior**, and if the largest value
+wins, extend it.
+
+`lambda2 = 0` is always worth including: it is the same model with the repulsion
+switched off, so it tells you whether the repulsion is earning its keep.
+
+```{r cv-plot, fig.height = 4}
+plot(cv)
+```
+
+The refitted model is in `cv$fit` and behaves like any other fit:
+
+```{r cv-fit}
+round(coef(cv$fit)[1:4], 3)
+```
+
+### Why not WAIC?
+
+`waic()` exists but **must not be used to choose `lambda2`**. The objective
+being fitted scores each sub-model on how well it predicts *on its own*, and
+repulsion necessarily makes each individual sub-model worse even when it makes
+the ensemble better. WAIC therefore improves monotonically as `lambda2` goes to
+zero and would always tell you to switch the method off. Held-out error of the
+*ensemble* is the right target, which is what `cv.bre()` uses.
+
+## 7. Reading the allocation structure
+
+This is what the method offers that a single sparse model cannot.
+
+We use the cross-validated fit from Section 6, not the under-repelled default.
+
+`coallocation()` gives the posterior probability that two features sit in the
+same sub-model. Compare it against the baseline `1/G` you would get if features
+were sprinkled across sub-models at random:
+
+```{r coalloc}
+best <- cv$fit
+
+cm <- coallocation(best, top = 4)
+round(cm, 2)
+
+cat("baseline 1/G =", round(1 / best$numModels, 2), "\n")
+```
+
+| Value | Meaning |
+|---|---|
+| **well below `1/G`** | the ensemble is actively separating these two. They are **substitutes** — carrying nearly the same information, so no sub-model needs both. |
+| **near `1/G`** | no detectable relationship. |
+| **well above `1/G`** | they are **complements**, used together; or at least one is carried by several sub-models at once. |
+
+Read this matrix as two findings at once. `V1` and `V2` sit **below** the
+baseline: they are near-duplicates, and the ensemble is using them as
+substitutes in different sub-models. `V3` sits at the top of the range with
+everything: it carries information nothing else does, so **every** sub-model
+needs it — a complement, not a substitute.
+
+**An essential check.** Low co-allocation has two possible causes, and only one
+of them is interesting:
+
+* both features keep a **high `eMIP`** — they really are being separated;
+* one has a **low `eMIP`** — it was simply dropped. That is the right answer for
+  an exact duplicate, but it is not discovered structure.
+
+So always read co-allocation together with the inclusion probabilities, which
+are on the diagonal:
+
+```{r coalloc-check}
+round(diag(cm), 3)       # these are the eMIPs
+```
+
+The exact baseline also depends on how often each feature is carried: for
+features in `m_j` and `m_k` sub-models it is
+`1 - choose(G - m_j, m_k) / choose(G, m_k)`, equal to `1/G` only when both are
+carried exactly once.
+
+### How the structure depends on `lambda2`
+
+```{r lambda-sweep}
+sweep <- t(sapply(c(0, 5, 10, 20), function(lam) {
+    f <- bre(X, y, numModels = 3, lambda2 = lam, iter = 1200, burnin = 600,
+             verbose = FALSE, seed = 7)
+    c(lambda2 = lam,
+      coalloc_V1_V2 = unname(coallocation(f, features = c("V1", "V2"))["V1", "V2"]),
+      meanNModels_V1 = unname(rowSums(f$pip)[1]),
+      eMIP_V1 = f$emip[[1]])
+}))
+round(sweep, 3)
+```
+
+Below a threshold the repulsion does nothing at all; above it the pair separates
+cleanly while both features stay in the model. That threshold is
+problem-specific, which is why Section 6 exists.
+
+### Confirming the repulsion is doing it
+
+Refit with the repulsion switched off and the separation should disappear:
+
+```{r coalloc-ablation}
+noRep <- bre(X, y, numModels = 3, lambda2 = 0, iter = 3000, burnin = 1500,
+             verbose = FALSE, seed = 7)
+
+round(c(withRepulsion = coallocation(best, features = c("V1", "V2"))["V1", "V2"],
+        noRepulsion   = coallocation(noRep, features = c("V1", "V2"))["V1", "V2"],
+        baseline      = 1 / 3), 3)
+```
+
+### One caveat: label symmetry
+
+Permuting all `G` sub-model labels at once leaves the posterior unchanged, so
+"Model 2" has no meaning across runs. `coallocation()` is unaffected by this.
+`allocation()` removes it by relabelling each draw, and reports how often
+relabelling was needed:
+
+```{r allocation}
+al <- allocation(best)
+cat("relabelling rate:", round(al$switchRate, 3), "\n")
+round(al$pip[1:4, ], 2)
+```
+
+The two structural plots, on the cross-validated fit:
+
+```{r plot-structure, fig.height = 4}
+plot(best, type = "coallocation", top = 6)
+```
+
+```{r plot-allocation, fig.height = 4}
+plot(best, type = "allocation", top = 6)
+```
+
+A relabelling rate near zero is fine, and usually means the assignment is
+sharply identified — the posterior really does prefer one arrangement. What you
+should check instead is that the relocation move is running at all, which
+`print(fit)` reports as `Transfer acc.`; if that is 0%, raise `transferMoves`.
+
+## 8. Classification
+
+Same interface with `family = "binomial"`. The example below is deliberately
+imbalanced.
+
+```{r binomial}
+set.seed(11)
+nb <- 300
+Xb <- matrix(rnorm(nb * 8), nb, 8)
+Xb[, 2] <- Xb[, 1] + rnorm(nb, sd = 0.15)
+colnames(Xb) <- paste0("V", 1:8)
+
+yb <- rbinom(nb, 1, plogis(-1.5 + as.numeric(Xb %*% c(1, 1, -1.5, rep(0, 5)))))
+mean(yb)
+
+fitb <- bre(Xb, yb, family = "binomial", numModels = 3,
+            iter = 2500, burnin = 1250, verbose = FALSE, seed = 3)
+
+round(coef(fitb)[1:4], 3)       # true intercept -1.5, V1 = 1, V2 = 1, V3 = -1.5
+```
+
+As before, `V1` and `V2` are the collinear pair, so read their sum:
+
+```{r binomial-pair}
+cat("V1 + V2 estimated:", round(sum(coef(fitb)[2:3]), 3), " true: 2\n")
+```
+
+For probabilities use `type = "response"`:
+
+```{r binomial-predict}
+probs <- predict(fitb, Xb, type = "response")
+round(head(probs, 4), 3)
+
+round(head(predict(fitb, Xb, type = "response", interval = "credible"), 4), 3)
+```
+
+These are posterior mean probabilities: the inverse logit is applied inside each
+draw and then averaged, which is not the same as transforming the mean
+coefficient. `type = "link"` gives log-odds. Prediction intervals are
+Gaussian-only.
+
+```{r binomial-calib}
+cat("mean predicted:", round(mean(probs), 3),
+    " observed rate:", round(mean(yb), 3), "\n")
+```
+
+## 9. The model, briefly
+
+Each of the `G` sub-models is fitted to the response in full, and their
+predictions are averaged:
+
+```
+p(y | B, sigma^2)  proportional to  prod_g  N(y | a0 + X beta^(g), sigma^2)^eta
+
+prediction:  a0 + X %*% betaBar,     betaBar = mean of beta^(g)
+```
+
+This is a composite (Gibbs) posterior rather than an ordinary one; `eta` is the
+learning rate, which sets how much evidence each sub-model draws from the data.
+
+Each cell of the `p` by `G` allocation matrix gets a spike-and-slab prior, and
+each row gets an Ising prior whose conditional inclusion odds are
+
+```
+odds(gamma_j^(g) = 1)  =  theta_j / (1 - theta_j)  *  exp(-lambda2 * c)
+```
+
+where `c` counts the *other* sub-models already using feature `j`. Each extra
+sub-model holding feature `j` multiplies the odds by `exp(-lambda2)`.
+
+### Arguments you might actually change
+
+| Argument | Meaning | Guidance |
+|---|---|---|
+| `numModels` | `G`, the number of sub-models | Choose with `cv.bre()`. More sub-models can separate larger correlated groups. |
+| `lambda2` | repulsion strength | Choose with `cv.bre()`. `0` is the matched control. Too large and features get pushed out of the model entirely. |
+| `learningRate` | `eta` above | Default 1: every sub-model uses the data in full. Lower values temper each sub-model; `1/G` is appealing in theory but can suppress selection entirely when `p` is large. |
+| `tauSq` | slab variance | On the scale of an ordinary regression coefficient, independent of `G`. Default 1 suits standardised data. |
+| `iter`, `burnin`, `thin` | chain length and storage | Raise if traces look unsettled. `thin` only saves memory. |
+| `transferMoves` | feature relocation proposals per iteration | Default 10. Raise if the relabelling rate or transfer acceptance is near zero. |
+| `thetaShape1`, `thetaShape2` | Beta prior on inclusion | Default implies about one active feature per sub-model. Raise `thetaShape1` for denser models. |
+| `pgTrunc` | Polya-Gamma series truncation | Binomial only, and only used when `learningRate` is not 1. |
+| `scaleData`, `seed` | standardise `X`; reproducibility | Keep `scaleData = TRUE`; set `seed` for anything you report. |
+
+## 10. Practical notes
+
+**Large `p`.** Cost per iteration is `O(G * n * p)` with no matrix inversions.
+Memory is the usual constraint, so use `burnin` and `thin`:
+
+```r
+fit <- bre(X, y, numModels = 5, iter = 20000, burnin = 10000, thin = 10)
+```
+
+`bre()` estimates the footprint before allocating and stops with instructions if
+it exceeds `maxMemoryGb` (default 4).
+
+**Troubleshooting.**
+
+| Symptom | Likely cause and fix |
+|---|---|
+| Error about constant columns | A column of `X` has zero variance. Remove it. |
+| Everything has `eMIP` near 0 | Signal too weak; or `learningRate` too low for this `p`; or `lambda2` too high. Try `lambda2 = 0` first to isolate it. |
+| Everything has `eMIP` near 1 | Prior too permissive. Lower `thetaShape1`, or raise `thetaShape2`. |
+| Co-allocation all near 1 | The repulsion is not biting. Raise `lambda2`, and check `cv.bre()`. |
+| Transfer acceptance 0% | Features cannot relocate. Raise `transferMoves`; check `lambda2` is not enormous. |
+| Traces drift | Raise `iter` and `burnin`. |
+| Binomial fitting is slow | `learningRate` other than 1 needs the series Polya-Gamma sampler. Lower `pgTrunc`, or use the default rate. |
+| Memory error on start | Increase `thin`, or set `storeChains = FALSE`. |
+
+**Reproducibility.** Pass `seed` to `bre()` rather than calling `set.seed()`
+beforehand, so the seed is recorded in the call.
+
+## 11. Where to look next
+
+* `?bre` — every argument, the model, and what the repulsion identifies.
+* `?cv.bre` — choosing `lambda2`, `numModels` and `learningRate`.
+* `?coallocation`, `?allocation` — allocation summaries.
+* `?summary.bre`, `?predict.bre`, `?plot.bre` — method details.
