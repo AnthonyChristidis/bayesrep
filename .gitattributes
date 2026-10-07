@@ -1,0 +1,11 @@
+# Normalise line endings in the repository to LF regardless of the
+# contributor's platform. R CMD check warns about CRLF in C/C++ sources and
+# Makefiles, so this keeps the package portable when built on Linux or macOS.
+* text=auto eol=lf
+
+# Binary files must never be converted.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.rds binary
+*.RData binary
