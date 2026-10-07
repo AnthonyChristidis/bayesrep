@@ -75,8 +75,8 @@ fit <- bre(X, y, numModels = 3, iter = 3000, burnin = 1500,
 
 The two settings worth thinking about are `numModels` (how many sub-models) and
 `lambda2` (how hard they repel). The default `lambda2` is deliberately
-conservative and on this small example it is **too weak to separate anything** —
-every feature ends up in every sub-model:
+conservative and on this small example it is **too weak to separate anything**.
+Every feature ends up in every sub-model:
 
 ```{r default-weak}
 rowSums(fit$pip)[1:3]        # average number of sub-models carrying V1, V2, V3
@@ -90,7 +90,7 @@ at structure. **Do not skip Section 6 when you apply this to your own data.**
 
 In order: **did it run properly**, **what did it find**, **should I believe it**.
 
-### `print(fit)` — did it run properly?
+### `print(fit)`: did it run properly?
 
 ```{r print}
 fit
@@ -105,7 +105,7 @@ What to check:
 | `Sub-model size` | not all zeros (nothing found) and not everything (no sparsity). |
 | `Selected (FDR 10%)` | a plausible number of real signals. |
 
-### `summary(fit)` — what did it find?
+### `summary(fit)`: what did it find?
 
 This is the main output of the package.
 
@@ -115,14 +115,14 @@ summary(fit)
 
 Column by column:
 
-* **`eMIP`** — "ensemble marginal inclusion probability": the posterior
+* **`eMIP`**, the "ensemble marginal inclusion probability": the posterior
   probability that the feature is used by **at least one** sub-model. This is
   your variable-importance score, and a correct per-feature probability.
   Use it to **rank**, not to threshold -- see the warning below.
-* **`PostMean`, `Lower`, `Upper`** — the ensemble coefficient and its 95%
+* **`PostMean`, `Lower`, `Upper`**: the ensemble coefficient and its 95%
   credible interval, **in your original units**. No back-transforming needed.
-* **`Theta`** — how broadly useful the feature is, on a 0–1 scale.
-* **`MeanNModels`** — the average number of sub-models carrying the feature.
+* **`Theta`**: how broadly useful the feature is, on a 0 to 1 scale.
+* **`MeanNModels`**: the average number of sub-models carrying the feature.
   Near 1 means it lives in a single sub-model; near `G` means every sub-model
   wants it (a "super-predictor" the repulsion could not push apart).
 
@@ -143,7 +143,7 @@ It is tempting to call everything with `eMIP > 0.5` a discovery. **Don't.**
 eMIP is the probability that a feature is carried by *at least one* of the `G`
 sub-models, so a null feature gets `G` chances to be picked up. A feature whose
 per-sub-model inclusion probability is only 0.12 has
-`1 - (1 - 0.12)^5 = 0.47` at `G = 5` — it crosses 0.5 on arithmetic alone. In a
+`1 - (1 - 0.12)^5 = 0.47` at `G = 5`. It crosses 0.5 on arithmetic alone. In a
 simulation with 350 null predictors, `eMIP > 0.5` admitted **347 of them**.
 
 Thresholding the per-sub-model probabilities instead does not help: the
@@ -152,8 +152,8 @@ carried by exactly one of five sub-models sits near `1/5` in each and never
 reaches 0.5 anywhere.
 
 Use `selectFeatures()`, which ranks by eMIP and admits features while the
-estimated false discovery rate — the average of `1 - eMIP` over those selected
-— stays within your target. That quantity never refers to `G`:
+estimated false discovery rate, the average of `1 - eMIP` over those selected,
+stays within your target. That quantity never refers to `G`:
 
 ```{r select}
 selectFeatures(fit, fdr = 0.1)
@@ -173,7 +173,7 @@ s <- summary(fit)
 head(s[, c("Feature", "eMIP", "PostMean", "MeanNModels")], 5)
 ```
 
-### `plot(fit, type = "trace")` — should I believe it?
+### `plot(fit, type = "trace")`: should I believe it?
 
 ```{r trace, fig.height = 6}
 plot(fit, type = "trace")
@@ -214,8 +214,8 @@ round(predict(fit, newX, interval = "prediction"), 2) # uncertainty in a new obs
 
 Which one you want:
 
-* **`"credible"`** — "where is the average response for this x?" Narrow.
-* **`"prediction"`** — "where will the *next actual observation* at this x
+* **`"credible"`**: "where is the average response for this x?" Narrow.
+* **`"prediction"`**: "where will the *next actual observation* at this x
   fall?" Wider, because it includes the irreducible noise.
 
 If you are telling someone what to expect for one new case, you want
@@ -223,20 +223,20 @@ If you are telling someone what to expect for one new case, you want
 
 ## 5. The plots
 
-### `type = "emip"` — which features are in?
+### `type = "emip"`: which features are in?
 
 ```{r plot-emip}
 plot(fit, type = "emip", top = 8)
 ```
 
-### `type = "intervals"` — how big, and how certain?
+### `type = "intervals"`: how big, and how certain?
 
 ```{r plot-intervals}
 plot(fit, type = "intervals", top = 8)
 ```
 
 Bars that cross the red zero line are unresolved. `V1` and `V2` are both clearly
-non-zero but individually imprecise — the collinearity, shown honestly.
+non-zero but individually imprecise: the collinearity, shown honestly.
 
 The two remaining types, `"coallocation"` and `"allocation"`, describe the
 ensemble structure and appear in Section 7, where there is a properly tuned fit
@@ -303,7 +303,7 @@ cat("baseline 1/G =", round(1 / best$numModels, 2), "\n")
 
 | Value | Meaning |
 |---|---|
-| **well below `1/G`** | the ensemble is actively separating these two. They are **substitutes** — carrying nearly the same information, so no sub-model needs both. |
+| **well below `1/G`** | the ensemble is actively separating these two. They are **substitutes**, carrying nearly the same information, so no sub-model needs both. |
 | **near `1/G`** | no detectable relationship. |
 | **well above `1/G`** | they are **complements**, used together; or at least one is carried by several sub-models at once. |
 
@@ -311,13 +311,13 @@ Read this matrix as two findings at once. `V1` and `V2` sit **below** the
 baseline: they are near-duplicates, and the ensemble is using them as
 substitutes in different sub-models. `V3` sits at the top of the range with
 everything: it carries information nothing else does, so **every** sub-model
-needs it — a complement, not a substitute.
+needs it, a complement rather than a substitute.
 
 **An essential check.** Low co-allocation has two possible causes, and only one
 of them is interesting:
 
-* both features keep a **high `eMIP`** — they really are being separated;
-* one has a **low `eMIP`** — it was simply dropped. That is the right answer for
+* both features keep a **high `eMIP`**: they really are being separated;
+* one has a **low `eMIP`**: it was simply dropped. That is the right answer for
   an exact duplicate, but it is not discovered structure.
 
 So always read co-allocation together with the inclusion probabilities, which
@@ -387,7 +387,7 @@ plot(best, type = "allocation", top = 6)
 ```
 
 A relabelling rate near zero is fine, and usually means the assignment is
-sharply identified — the posterior really does prefer one arrangement. What you
+sharply identified: the posterior really does prefer one arrangement. What you
 should check instead is that the relocation move is running at all, which
 `print(fit)` reports as `Transfer acc.`; if that is 0%, raise `transferMoves`.
 
@@ -505,7 +505,7 @@ beforehand, so the seed is recorded in the call.
 
 ## 11. Where to look next
 
-* `?bre` — every argument, the model, and what the repulsion identifies.
-* `?cv.bre` — choosing `lambda2`, `numModels` and `learningRate`.
-* `?coallocation`, `?allocation` — allocation summaries.
-* `?summary.bre`, `?predict.bre`, `?plot.bre` — method details.
+* `?bre`: every argument, the model, and what the repulsion identifies.
+* `?cv.bre`: choosing `lambda2`, `numModels` and `learningRate`.
+* `?coallocation`, `?allocation`: allocation summaries.
+* `?summary.bre`, `?predict.bre`, `?plot.bre`: method details.

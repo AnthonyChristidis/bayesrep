@@ -28,7 +28,7 @@ First release.
 * A Metropolis move relocates features between sub-models in a single step. A
   single-site sweep cannot do this without passing through a duplicated state
   that the repulsion penalises, so without the move the assignment freezes.
-* Pólya-Gamma augmentation for binary responses, including at the non-integer
+* Polya-Gamma augmentation for binary responses, including at the non-integer
   shape required when `learningRate` is not 1.
 * Posterior summaries accumulate online and the allocation chain is stored one
   byte per entry, with `burnin`, `thin` and a memory budget, so the sampler is

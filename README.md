@@ -3,8 +3,8 @@
 **Bayesian Repulsive Ensembles for high-dimensional regression and classification.**
 
 When predictors are correlated, a sparse model picks one from each correlated
-group and discards the rest. The choice is close to arbitrary — resample the
-data and a different member often wins — which leaves coefficients unstable and
+group and discards the rest. The choice is close to arbitrary: resample the
+data and a different member often wins, which leaves coefficients unstable and
 uncertainty understated.
 
 `bayesrep` fits an ensemble of `G` sparse sub-models at once. Two forces act
@@ -76,7 +76,7 @@ selectFeatures(fit, fdr = 0.1)
 
 All six true signals, no false positives. The correlated block sums to 5.88
 against a truth of 6.0 (only the block total is identified), and `V6` comes back
-at −2.61 against −2.5.
+at -2.61 against -2.5.
 
 Read `MeanNModels` as how widely a predictor is shared: `V6` carries information
 nothing else does, so **all five** sub-models take it. The block members sit in
@@ -90,7 +90,7 @@ one to three apiece, because they substitute for each other.
 | `cv.bre()` | Choose `lambda2`, `numModels`, `learningRate`, `tauSq` by held-out error. |
 | `summary()` | Features ranked by ensemble marginal inclusion probability, with intervals on the original data scale. |
 | `selectFeatures()` | Select at a controlled false discovery rate. |
-| `coallocation()` | Posterior probability that two features share a sub-model — which predictors are substitutes. |
+| `coallocation()` | Posterior probability that two features share a sub-model, showing which predictors are substitutes. |
 | `predict()` | Posterior-averaged predictions with credible or predictive intervals. |
 | `plot()` | Importance, co-allocation, allocation, coefficient intervals, MCMC traces. |
 
@@ -99,7 +99,7 @@ one to three apiece, because they substitute for each other.
 **`lambda2` must be tuned.** It competes on the log-odds scale against evidence
 that grows with sample size and signal strength, so the value that separates a
 correlated group on one dataset can be an order of magnitude off on another. It
-cannot be learned from the posterior and must not be selected by WAIC — both
+cannot be learned from the posterior and must not be selected by WAIC. Both
 drive it to zero, because the objective scores each sub-model on its own fit and
 repulsion necessarily makes that worse. Use `cv.bre()`, and widen the grid until
 the chosen value is interior.
@@ -118,7 +118,7 @@ The benefit is regime-dependent, and it is worth knowing which side you are on.
 - **Many active predictors relative to `n`.** A single sparse model is
   capacity-bound; the sub-models can cover the active set collectively, but only
   if the repulsion stops them covering the same parts. Here repulsion is the
-  mechanism rather than a refinement — without it the ensemble is *worse* than a
+  mechanism rather than a refinement: without it the ensemble is *worse* than a
   single model.
 - **Few active predictors.** A single spike-and-slab has ample capacity and
   already averages over which member of a correlated group to include. The
