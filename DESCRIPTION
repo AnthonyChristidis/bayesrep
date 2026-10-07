@@ -18,6 +18,8 @@ Description: A scalable, exact Gibbs sampling framework for Bayesian Repulsive
     universally predictive covariates to be shared across sub-models, and
     Polya-Gamma data augmentation extends the exact sampler to binary outcomes.
     Posterior summaries are invariant to relabelling of the ensemble members.
+URL: https://github.com/AnthonyChristidis/bayesrep
+BugReports: https://github.com/AnthonyChristidis/bayesrep/issues
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
