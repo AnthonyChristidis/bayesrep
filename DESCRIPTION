@@ -1,0 +1,42 @@
+Package: bayesrep
+Type: Package
+Title: Bayesian Repulsive Ensembles via Ising Priors
+Version: 1.0.0
+Authors@R: c(
+    person(
+      "Anthony", "Christidis",
+      email = "anthony.christidis@stat.ubc.ca",
+      role = c("aut", "cre")
+    )
+  )
+Description: A scalable, exact Gibbs sampling framework for Bayesian Repulsive
+    Ensembles (BRE). An Ising prior on the feature-allocation matrix pushes the
+    members of an ensemble towards structurally diverse sub-models, reducing
+    collinearity-induced variance in high-dimensional regression and
+    classification. The repulsion strength is learned from the data rather than
+    tuned, a Beta hyperprior on feature-specific inclusion probabilities allows
+    universally predictive covariates to be shared across sub-models, and
+    Polya-Gamma data augmentation extends the exact sampler to binary outcomes.
+    Posterior summaries are invariant to relabelling of the ensemble members.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+LinkingTo:
+    Rcpp,
+    RcppArmadillo
+Imports:
+    Rcpp,
+    pgdraw,
+    stats,
+    graphics,
+    grDevices,
+    utils
+Suggests:
+    mvnfast,
+    MASS,
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+RoxygenNote: 7.3.3

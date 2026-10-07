@@ -1,0 +1,57 @@
+# --- R session / IDE state -------------------------------------------------
+.Rproj.user/
+.Rhistory
+.RData
+.Rapp.history
+.Ruserdata
+.Renviron
+.Rprofile.user
+
+# --- Compiled code ---------------------------------------------------------
+*.o
+*.so
+*.dll
+*.dylib
+src/symbols.rds
+
+# --- R CMD build / check output --------------------------------------------
+*.Rcheck/
+bayesrep_*.tar.gz
+bayesrep_*.tgz
+bayesrep_*.zip
+
+# Vignettes built by R CMD build land here; they are regenerated from
+# vignettes/*.Rmd and should not be tracked.
+inst/doc/
+doc/
+Meta/
+
+# --- LaTeX intermediates ---------------------------------------------------
+# The .tex sources and the compiled .pdf are tracked; everything LaTeX
+# regenerates on each run is not.
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+
+# --- Simulation output -----------------------------------------------------
+# The scripts in sandbox/ are tracked; the figures and result objects they
+# produce are not, since they are reproducible from the scripts.
+sandbox/*.rds
+sandbox/*.png
+sandbox/*.pdf
+sandbox/*.csv
+
+# --- OS cruft --------------------------------------------------------------
+.DS_Store
+Thumbs.db
